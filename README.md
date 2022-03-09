@@ -21,15 +21,17 @@ Windows PowerShell 5.1
 PowerShell 7
 
 ## What functionality does the script support?
-Currently the following options are supported
+Currently the following options are supported:
 
 * Hero image
 * Logo override
 * Title
 * Message
-* Single inline image
 * Attribution Text
-* A Protocol Button, e.g. a link to a website or file with optional custom text
+* Single inline image
+* A protocol Button, e.g. a link to a website or file, with optional custom button text
+* Custom snooze options, with optional header text and with optional custom pre-selection
+* A Snooze button, using default snooze or custom snooze options
 * A dismiss button
 
 ![Toast Image](./assets/exampleToast.png)

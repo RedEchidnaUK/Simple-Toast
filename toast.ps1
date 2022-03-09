@@ -8,7 +8,7 @@
     PS C:\> .\toast.ps1 
 
     Toast with all options
-    PS C:\> .\toast.ps1 -title "Title" -message "Message goes here" -heroImage "https://picsum.photos/364/180?image=1043" -inlineIamge "https://picsum.photos/364/180?image=1043" -logo "C:\Program Files\Toast\Images\ToastLogoImageWindows.jpg" -attribution "From IT" -protocolButtonTxt "Click Me!" -protocolButtonlink "https://example.com" -dismissButton
+    PS C:\> .\toast.ps1 -title "Title" -message "Message goes here" -heroImage "https://picsum.photos/364/180?image=1043" -inlineImage "https://picsum.photos/364/180?image=1043" -logo "C:\Program Files\Toast\Images\ToastLogoImageWindows.jpg" -attribution "From IT" -protocolButtonTxt "Click Me!" -protocolButtonlink "https://example.com" -dismissButton
     
     Example for calling from within another script
 
@@ -44,14 +44,31 @@
     -attribution
         Optional attribution text
     
-    -protocolButtonLink [protocolButton]
+    -protocolButton [protocolButtonLink]
         Optional protocol link button. Make sure you specify the protocol, such as 'https://' before your link!
 
     -protocolButtonText
-        Optional override for the default protocol link Button text. Try to keep this text short, there is a limit of around 36 characters
+        Optional override for the default protocol link Button text. 
+        Try to keep this text short, there is a limit of around 36 characters. Remember, multiple buttons have less text space!
 
-    -dismiss
+    -dismiss [dismissButton]
         Optional dismiss button
+
+    -snoooze [snoozeButton]
+        Optional snooze button using the system default snooze time
+
+    -snoozeOptions [snoozeButtonOptions]
+        Optional options for the user to select how long to snooze for. 
+        These must be specified in the following format "ID:Text" where ID is the length in minutes to snooze for and each item is seperated by a comma.
+        For example, to add 2 options to snooze for 1 minute and 1 hour, use "1:1 minute,60:1 hour"
+    
+    -snoozeDefault [snoozeOptionsDefault]
+        Optional default snooze option to select. If not specified the first option will be automatically selected.
+        Specify the 'snoozeButtonOptions' ID to make that option the default selection.
+        For example, based on the options "1:1 minute,60:1 hour", setting '1' would select the first option and '60' would select the second option
+
+    -snoozeOptionsText [snoozeButtonText]
+        Optional text to display above the custom snooze options
 
 .OUTPUTS
     A Toast notification
@@ -64,6 +81,10 @@
 
     Version History
     1.0.0 - Initial release
+
+    1.1.0 - Snooze Added
+        Added the ability to add a snooze button with custom times and text.
+        The snooze and dismiss buttons order is dependent on the order in which they are specified as parameters.
 #>
 
 param(
@@ -88,7 +109,20 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$protocolButtonText= "Click me!",
     [Parameter(Mandatory = $false)]
-    [switch]$dismissButton
+    [Alias("dismissButton")]
+    [switch]$dismiss,
+    [Parameter(Mandatory = $false)]
+    [Alias("snoozeButton")]
+    [switch]$snooze,
+    [Parameter(Mandatory = $false)]
+    [Alias("snoozeButtonOptions")]
+    [string]$snoozeOptions,
+    [Parameter(Mandatory = $false)]
+    [Alias("snoozeOptionsDefault")]
+    [string]$snoozeDefault = -1,
+    [Parameter(Mandatory = $false)]
+    [string]$snoozeOptionsText = $null
+
 )
 
 function Write-Log() {
@@ -565,6 +599,33 @@ try {
     $message = $message.Replace('##', '"')
     $heroImage = $heroImage.Replace("'", "")
     $protocolButtonText = $protocolButtonText.Replace("'", "")
+    $snoozeOptionsText = $snoozeOptionsText.Replace("'", "")
+  
+    $invocationLine = $MyInvocation.Line.toLower()
+    $invocationLine = $invocationLine.Replace("snoozebutton","snooze")
+    $invocationLine = $invocationLine.Replace("snoozebuttonoptions","snoozeoptions")
+    $invocationLine = $invocationLine.Replace("dismissbutton","dismiss")
+
+    $invocationLine
+
+    $invocationLine.IndexOf("-snooze")
+    $invocationLine.IndexOf("-snoozeoptions")
+    $invocationLine.IndexOf("-dismiss")
+
+    if((35 -le 26) -or (43 -le 26)){
+    Write-Host "true"
+    }
+    else{
+    Write-Host "false"
+    }
+
+    if((($invocationLine.IndexOf("-snooze")) -le ($invocationLine.IndexOf("-dismiss"))) -or (($invocationLine.IndexOf("-snoozeoptions")) -le ($invocationLine.IndexOf("-dismiss")))) {
+    #if(($invocationLine.IndexOf("-snooze") -or $invocationLine.IndexOf("-snoozeoptions")) -le ($invocationLine.IndexOf("-dismiss"))) {
+        $snoozeButtonFirst = $true
+    }
+    else{
+        $snoozeButtonFirst = $false
+    }
 
     $toast = [Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder]::new()
 
@@ -622,7 +683,56 @@ try {
         $toast.AddButton($protocolButtonText, 'Protocol', $protocolButtonLink) >> $null
     }
 
-    if ($dismissButton) {
+    if ($dismiss -and !$snoozeButtonFirst) {
+        Write-Log -Message "Adding a dismiss button"
+        $toast.AddButton([Microsoft.Toolkit.Uwp.Notifications.ToastButtonDismiss]::new()) >> $null
+    }
+
+
+
+    #$toast.SetToastScenario("Reminder")
+
+
+    if($snoozeButton -or $snoozeOptions){
+
+        if($snoozeOptions){
+
+            $choicesArray = $snoozeOptions.Split(",")
+            $choices2DArray = New-Object 'object[,]' $choicesArray.Length,2
+            $choices = @()
+
+            #Build the 2D array from the options sent and look for a valid default to select
+            for($i=0; $i -lt $choicesArray.Length; $i++){
+                $pos = $choicesArray[$i].IndexOf(":")
+                $choices2DArray[$i,0] += $choicesArray[$i].Substring(0, $pos)
+                $choices2DArray[$i,1] += $choicesArray[$i].Substring($pos+1, $choicesArray[$i].Length -$pos -1)
+                $choices += [ValueTuple[string, string]]::new(($choices2DArray[$i,0]),($choices2DArray[$i,1]))
+                if($snoozeDefault -eq $choices2DArray[$i,0]){
+                    $snoozeDefaultTemp = $choices2DArray[$i,0]
+                }
+            }
+
+            if($snoozeDefault -ne $snoozeDefaultTemp){
+                $snoozeDefault = $choices2DArray[0,0]
+            }
+
+            $toast.AddComboBox("dropdown",$snoozeOptionsText ,$snoozeDefault, $Choices) >> $null
+
+            $toastSnooze = [Microsoft.Toolkit.Uwp.Notifications.ToastButtonSnooze]::new()
+            $toastSnooze.SelectionBoxId = "dropdown"
+
+            Write-Log -Message "Adding a custom snooze button ($snoozeOptions), option ID $snoozeDefault selected"
+            $toast.AddButton($toastSnooze) >> $null
+        }
+        else {
+            Write-Log -Message "Adding a default snooze button"
+            $toast.AddButton([Microsoft.Toolkit.Uwp.Notifications.ToastButtonSnooze]::new()) >> $null
+        }
+    
+        
+    }
+
+    if ($dismiss -and $snoozeButtonFirst) {
         Write-Log -Message "Adding a dismiss button"
         $toast.AddButton([Microsoft.Toolkit.Uwp.Notifications.ToastButtonDismiss]::new()) >> $null
     }
@@ -641,5 +751,6 @@ catch {
     $ErrorMessage = $_.Exception.Message
     Write-Log -Level Error -Message "Error message: $ErrorMessage"
 }
+
 
 Write-Log -Message "------------- TOAST SCRIPT ENDED -------------"
